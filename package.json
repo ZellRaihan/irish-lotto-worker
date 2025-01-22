@@ -1,0 +1,17 @@
+{
+  "name": "irish-lotto-worker",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20250121.0",
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.17"
+  }
+}
