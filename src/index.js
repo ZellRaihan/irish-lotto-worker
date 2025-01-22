@@ -123,10 +123,16 @@ app.get('/api/results/:id', async (c) => {
 
 // Manual fetch endpoint
 app.post('/api/fetch-results', async (c) => {
+    console.log('Fetch results endpoint called');
     try {
+        console.log('Fetching from lottery.ie...');
         const response = await fetch('https://www.lottery.ie/_next/data/mvk05VlOxs17Hawg8CCE5/en/results/lotto/history.json');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch from lottery.ie: ${response.status}`);
+        }
         const data = await response.json();
-        const results = data.pageProps.list;
+        console.log('Got lottery data, processing results...');
+        const results = data.pageProps.list || [];
         let newResults = 0;
 
         // Process each result
@@ -140,28 +146,32 @@ app.post('/api/fetch-results', async (c) => {
 
             if (!existing) {
                 newResults++;
+                console.log('Adding new result for date:', drawDate);
                 // Insert new result
                 const { lastRowId } = await c.env.DB.prepare(`
                     INSERT INTO lottery_results (draw_date, jackpot_amount)
                     VALUES (?, ?)
                 `).bind(
                     drawDate.toISOString(),
-                    result.standard.jackpotAmount
+                    parseInt(result.standard.jackpotAmount.replace(/[^0-9]/g, '')) * 100
                 ).run();
 
                 // Insert winning numbers
+                const numbers = result.standard.grids[0].standard[0].join(',');
+                const bonus = result.standard.grids[0].additional[0][0];
+                
                 await c.env.DB.prepare(`
                     INSERT INTO winning_numbers (result_id, game_type, numbers, bonus_number)
                     VALUES (?, ?, ?, ?)
                 `).bind(
                     lastRowId,
                     'main',
-                    JSON.stringify(result.standard.grids[0].standard[0]),
-                    result.standard.grids[0].additional[0][0]
+                    numbers,
+                    bonus
                 ).run();
 
                 // Insert prize breakdown
-                for (const prize of result.standard.prizeTiers) {
+                for (const prize of result.standard.prizes) {
                     await c.env.DB.prepare(`
                         INSERT INTO prize_breakdown (result_id, game_type, match_type, winners, prize_amount)
                         VALUES (?, ?, ?, ?, ?)
@@ -169,13 +179,14 @@ app.post('/api/fetch-results', async (c) => {
                         lastRowId,
                         'main',
                         prize.match,
-                        prize.winners,
-                        prize.prize
+                        prize.numberOfWinners,
+                        parseInt(prize.prize.replace(/[^0-9]/g, '')) * 100
                     ).run();
                 }
             }
         }
 
+        console.log('Fetch completed, new results:', newResults);
         return c.json({ 
             success: true, 
             message: `Successfully fetched results. ${newResults} new results added.` 

@@ -71,15 +71,26 @@ function displayResults(results) {
 
 // Load results and update UI
 async function loadResults(page = 1) {
+    console.log('Loading results for page:', page);
     const resultsTable = document.querySelector('#results-table tbody');
     resultsTable.innerHTML = '<tr><td colspan="5" class="text-center">Loading results...</td></tr>';
 
-    const data = await fetchResults(page);
-    if (!data) return;
+    try {
+        const data = await fetchResults(page);
+        console.log('Results data:', data);
+        
+        if (!data) {
+            showAlert('danger', 'Failed to load results');
+            return;
+        }
 
-    displayResults(data.results);
-    updatePagination(data.pagination);
-    updateStats(data.results);
+        displayResults(data.results);
+        updatePagination(data.pagination);
+        updateStats(data.results);
+    } catch (error) {
+        console.error('Error loading results:', error);
+        showAlert('danger', 'Error loading results: ' + error.message);
+    }
 }
 
 // Render stats cards
@@ -236,24 +247,32 @@ async function changePage(page) {
 
 // Fetch Results Button Handler
 fetchResultsBtn.addEventListener('click', async () => {
+    console.log('Fetch button clicked');
     try {
         fetchResultsBtn.disabled = true;
         fetchResultsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
         
+        console.log('Making fetch request...');
         const response = await fetch('/api/fetch-results', {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
+        console.log('Response received:', response.status);
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.success) {
             showAlert('success', data.message);
-            // Refresh the results
+            console.log('Refreshing results...');
             currentPage = 1;
             await loadResults();
         } else {
-            showAlert('danger', data.message);
+            showAlert('danger', data.message || 'Failed to fetch results');
         }
     } catch (error) {
+        console.error('Error in fetch button handler:', error);
         showAlert('danger', 'Error fetching results: ' + error.message);
     } finally {
         fetchResultsBtn.disabled = false;
