@@ -17,17 +17,73 @@ const fetchResultsBtn = document.getElementById('fetchResultsBtn');
 // Fetch results from API
 async function fetchResults(page = 1) {
     try {
-        const response = await fetch(`/api/results?page=${page}&limit=${resultsPerPage}`);
-        const data = await response.json();
-        return data;
+        const response = await fetch(`/api/results?page=${page}&limit=10`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch results');
+        }
+        return await response.json();
     } catch (error) {
         console.error('Error fetching results:', error);
+        showAlert('danger', 'Error fetching results: ' + error.message);
         return null;
     }
 }
 
+// Display results in table
+function displayResults(results) {
+    const tbody = document.querySelector('#results-table tbody');
+    tbody.innerHTML = '';
+
+    if (!results || !results.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No results found</td></tr>';
+        return;
+    }
+
+    results.forEach(result => {
+        const drawDate = new Date(result.draw_date);
+        const winningNumbers = JSON.parse(result.winning_numbers);
+        const mainNumbers = JSON.parse(winningNumbers[0].numbers).join(', ');
+        const bonusNumber = winningNumbers[0].bonus_number;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${drawDate.toLocaleDateString('en-IE', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            })}</td>
+            <td>${mainNumbers}</td>
+            <td>${bonusNumber}</td>
+            <td>€${(result.jackpot_amount / 100).toLocaleString('en-IE', { 
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })}</td>
+            <td>
+                <button class="btn btn-sm btn-primary view-details" data-result-id="${result.id}">
+                    View Details
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Load results and update UI
+async function loadResults(page = 1) {
+    const resultsTable = document.querySelector('#results-table tbody');
+    resultsTable.innerHTML = '<tr><td colspan="5" class="text-center">Loading results...</td></tr>';
+
+    const data = await fetchResults(page);
+    if (!data) return;
+
+    displayResults(data.results);
+    updatePagination(data.pagination);
+    updateStats(data.results);
+}
+
 // Render stats cards
-function renderStats(stats) {
+function updateStats(stats) {
     const { total, latest } = stats;
     statsContainer.innerHTML = `
         <div class="col-md-4">
@@ -66,38 +122,8 @@ function renderStats(stats) {
     `;
 }
 
-// Render results table
-function renderResults(results) {
-    resultsBody.innerHTML = results.map(result => `
-        <tr>
-            <td class="px-4">
-                <strong>${moment(result.draw_date).format('DD MMM YYYY HH:mm')}</strong>
-            </td>
-            <td>
-                <div class="d-flex gap-1">
-                    ${JSON.parse(result.winning_numbers)[0].numbers.split(',').map(num => 
-                        `<span class="badge rounded-pill bg-primary">${num}</span>`
-                    ).join('')}
-                </div>
-            </td>
-            <td>
-                <span class="badge rounded-pill bg-success">
-                    ${JSON.parse(result.winning_numbers)[0].bonus_number}
-                </span>
-            </td>
-            <td>${result.jackpot_amount}</td>
-            <td class="text-end px-4">
-                <button class="btn btn-sm btn-outline-primary" onclick="showDetails('${result.id}')">
-                    <i class="fas fa-eye me-1"></i>
-                    View Details
-                </button>
-            </td>
-        </tr>
-    `).join('');
-}
-
 // Render pagination
-function renderPagination(pagination) {
+function updatePagination(pagination) {
     const { page, totalPages } = pagination;
     let paginationHtml = '';
 
@@ -206,20 +232,6 @@ async function changePage(page) {
     if (page < 1) return;
     currentPage = page;
     await loadResults();
-}
-
-// Load results
-async function loadResults() {
-    const data = await fetchResults(currentPage);
-    if (data) {
-        renderResults(data.results);
-        renderPagination(data.pagination);
-        renderStats({
-            total: data.pagination.total,
-            latest: data.results[0]
-        });
-        resultsCount.textContent = `Showing ${data.results.length} of ${data.pagination.total} results`;
-    }
 }
 
 // Fetch Results Button Handler
