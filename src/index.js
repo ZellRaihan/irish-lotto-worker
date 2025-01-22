@@ -9,14 +9,14 @@ app.use('*', cors());
 
 // Serve static files
 app.get('/', async (c) => {
-    const response = await fetch('https://raw.githubusercontent.com/YOUR_USERNAME/irish-lotto-worker/main/public/index.html');
+    const response = await fetch('https://raw.githubusercontent.com/ZellRaihan/irish-lotto-worker/master/public/index.html');
     const content = await response.text();
     return c.html(content);
 });
 
 app.get('/css/*', async (c) => {
     const path = c.req.path.replace('/css/', '');
-    const response = await fetch(`https://raw.githubusercontent.com/YOUR_USERNAME/irish-lotto-worker/main/public/css/${path}`);
+    const response = await fetch(`https://raw.githubusercontent.com/ZellRaihan/irish-lotto-worker/master/public/css/${path}`);
     const content = await response.arrayBuffer();
     return c.body(content, {
         headers: { 'Content-Type': 'text/css' }
@@ -25,7 +25,7 @@ app.get('/css/*', async (c) => {
 
 app.get('/js/*', async (c) => {
     const path = c.req.path.replace('/js/', '');
-    const response = await fetch(`https://raw.githubusercontent.com/YOUR_USERNAME/irish-lotto-worker/main/public/js/${path}`);
+    const response = await fetch(`https://raw.githubusercontent.com/ZellRaihan/irish-lotto-worker/master/public/js/${path}`);
     const content = await response.arrayBuffer();
     return c.body(content, {
         headers: { 'Content-Type': 'application/javascript' }
@@ -119,6 +119,74 @@ app.get('/api/results/:id', async (c) => {
     }
 
     return c.json(result);
+});
+
+// Manual fetch endpoint
+app.post('/api/fetch-results', async (c) => {
+    try {
+        const response = await fetch('https://www.lottery.ie/_next/data/mvk05VlOxs17Hawg8CCE5/en/results/lotto/history.json');
+        const data = await response.json();
+        const results = data.pageProps.list;
+        let newResults = 0;
+
+        // Process each result
+        for (const result of results) {
+            const drawDate = new Date(result.standard.drawDates[0]);
+            
+            // Check if result already exists
+            const existing = await c.env.DB.prepare('SELECT id FROM lottery_results WHERE draw_date = ?')
+                .bind(drawDate.toISOString())
+                .first();
+
+            if (!existing) {
+                newResults++;
+                // Insert new result
+                const { lastRowId } = await c.env.DB.prepare(`
+                    INSERT INTO lottery_results (draw_date, jackpot_amount)
+                    VALUES (?, ?)
+                `).bind(
+                    drawDate.toISOString(),
+                    result.standard.jackpotAmount
+                ).run();
+
+                // Insert winning numbers
+                await c.env.DB.prepare(`
+                    INSERT INTO winning_numbers (result_id, game_type, numbers, bonus_number)
+                    VALUES (?, ?, ?, ?)
+                `).bind(
+                    lastRowId,
+                    'main',
+                    JSON.stringify(result.standard.grids[0].standard[0]),
+                    result.standard.grids[0].additional[0][0]
+                ).run();
+
+                // Insert prize breakdown
+                for (const prize of result.standard.prizeTiers) {
+                    await c.env.DB.prepare(`
+                        INSERT INTO prize_breakdown (result_id, game_type, match_type, winners, prize_amount)
+                        VALUES (?, ?, ?, ?, ?)
+                    `).bind(
+                        lastRowId,
+                        'main',
+                        prize.match,
+                        prize.winners,
+                        prize.prize
+                    ).run();
+                }
+            }
+        }
+
+        return c.json({ 
+            success: true, 
+            message: `Successfully fetched results. ${newResults} new results added.` 
+        });
+    } catch (error) {
+        console.error('Error updating results:', error);
+        return c.json({ 
+            success: false, 
+            message: 'Error fetching results: ' + error.message 
+        }, 500);
+    }
 });
 
 // Scheduled task to fetch and update results

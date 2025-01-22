@@ -12,6 +12,7 @@ const statsContainer = document.getElementById('stats-container');
 const resultsCount = document.getElementById('results-count');
 const modalContent = document.getElementById('modal-content');
 const resultModal = new bootstrap.Modal(document.getElementById('resultModal'));
+const fetchResultsBtn = document.getElementById('fetchResultsBtn');
 
 // Fetch results from API
 async function fetchResults(page = 1) {
@@ -219,6 +220,52 @@ async function loadResults() {
         });
         resultsCount.textContent = `Showing ${data.results.length} of ${data.pagination.total} results`;
     }
+}
+
+// Fetch Results Button Handler
+fetchResultsBtn.addEventListener('click', async () => {
+    try {
+        fetchResultsBtn.disabled = true;
+        fetchResultsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
+        
+        const response = await fetch('/api/fetch-results', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert('success', data.message);
+            // Refresh the results
+            currentPage = 1;
+            await loadResults();
+        } else {
+            showAlert('danger', data.message);
+        }
+    } catch (error) {
+        showAlert('danger', 'Error fetching results: ' + error.message);
+    } finally {
+        fetchResultsBtn.disabled = false;
+        fetchResultsBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Fetch Latest Results';
+    }
+});
+
+// Alert function
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        setTimeout(() => alertDiv.remove(), 150);
+    }, 5000);
 }
 
 // Initial load
